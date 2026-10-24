@@ -1,0 +1,85 @@
+name: App Deploy (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: GitHub environment holding the Azure sign-in secrets
+        required: true
+        type: string
+      app-name:
+        description: Name of the App Service (Terraform output app_service_name)
+        required: true
+        type: string
+      artifact:
+        description: Name of the uploaded build artifact containing app.zip
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment }}
+      url: ${{ steps.deploy.outputs.webapp-url }}
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: deploy-app-${{ inputs.environment }}
+      cancel-in-progress: false
+
+    steps:
+      - name: Download package
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.artifact }}
+
+      - name: Verify checksum
+        run: sha256sum --check app.zip.sha256
+
+      - name: Azure Login
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.ARM_CLIENT_ID }}
+          tenant-id: ${{ secrets.ARM_TENANT_ID }}
+          subscription-id: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+
+      # Uses the signed-in Entra identity; basic publishing credentials are disabled on the app.
+      - name: Deploy to Azure App Service
+        id: deploy
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ inputs.app-name }}
+          package: app.zip
+
+      - name: Check health and home page
+        env:
+          BASE_URL: ${{ steps.deploy.outputs.webapp-url }}
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error --max-time 10 "$BASE_URL/health/live"; then
+              echo
+              curl --fail --silent --show-error --max-time 10 "$BASE_URL/" | grep -q 'id="root"'
+              echo "App is healthy."
+              exit 0
+            fi
+            echo "Attempt $attempt: not healthy yet, retrying in 10 s"
+            sleep 10
+          done
+          echo "::error::$BASE_URL/health/live did not return 200 within 5 minutes."
+          exit 1
+
+      - name: Deployment summary
+        env:
+          BASE_URL: ${{ steps.deploy.outputs.webapp-url }}
+        run: |
+          {
+            echo "### ✅ App deployed to ${{ inputs.environment }}"
+            echo "**URL**: $BASE_URL"
+            echo "**Commit**: ${GITHUB_SHA::7}"
+          } >> "$GITHUB_STEP_SUMMARY"

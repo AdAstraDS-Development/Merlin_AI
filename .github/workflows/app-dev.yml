@@ -1,0 +1,117 @@
+name: '[DEV] Build and Deploy App'
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'api/**'
+      - 'web/**'
+      - 'tools/**'
+      - 'global.json'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.node-version'
+      - '.github/workflows/app-dev.yml'
+      - '.github/workflows/_app-deploy.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Terraform output app_service_name for the dev environment (infrastructure/backend.tf).
+  AZURE_WEBAPP_NAME: app-ai-merlin-dev-001
+
+jobs:
+  build:
+    name: Build, test and package
+    runs-on: ubuntu-latest
+    outputs:
+      app-name: ${{ env.AZURE_WEBAPP_NAME }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+
+      # pnpm/action-setup is not available on this instance; the version comes from packageManager in package.json
+      - name: Install pnpm
+        run: npm install -g "$(node -p "require('./package.json').packageManager")"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # pnpm validate minus test:hooks: .claude/hooks is not checked in to this repository. The build runs in Package.
+      - name: Lint, typecheck and format
+        run: pnpm lint && pnpm typecheck && pnpm format:check && pnpm format:api
+
+      - name: Test
+        run: pnpm test && pnpm test:api
+
+      - name: Package
+        run: pnpm package:app
+
+      - name: Write build info
+        run: |
+          printf '{"commit":"%s","runId":"%s"}\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" > artifacts/app/wwwroot/build-info.json
+
+      - name: Smoke test the package
+        working-directory: artifacts/app
+        env:
+          ASPNETCORE_URLS: http://localhost:5080
+          # Testing may use the in-memory registry; Production requires Azure SQL.
+          ASPNETCORE_ENVIRONMENT: Testing
+          StateDirectory: ${{ runner.temp }}/merlin-state
+        run: |
+          dotnet Merlin.Api.dll > "$RUNNER_TEMP/app.log" 2>&1 &
+          for _ in $(seq 1 30); do
+            curl --silent --fail http://localhost:5080/health/live > /dev/null && break
+            sleep 1
+          done
+          status=0
+          node ../../tools/smoke.mjs || status=$?
+          kill %1 || true
+          if [ "$status" -ne 0 ]; then cat "$RUNNER_TEMP/app.log"; fi
+          exit "$status"
+
+      - name: Create zip and checksum
+        working-directory: artifacts/app
+        run: |
+          zip -qr ../../app.zip .
+          cd ../..
+          sha256sum app.zip > app.zip.sha256
+
+      - name: Upload package
+        uses: actions/upload-artifact@v7
+        with:
+          name: app-${{ github.sha }}
+          path: |
+            app.zip
+            app.zip.sha256
+          retention-days: 14
+
+  deploy:
+    name: Deploy
+    needs: build
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/_app-deploy.yml
+    with:
+      environment: development
+      app-name: ${{ needs.build.outputs.app-name }}
+      artifact: app-${{ github.sha }}
+    secrets: inherit

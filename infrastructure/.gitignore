@@ -1,0 +1,10 @@
+# Local provider and module cache from terraform init
+.terraform/
+
+# State, plans and crash logs never belong in git (state lives in Azure Storage)
+*.tfstate
+*.tfstate.*
+*.tfplan
+tf.plan
+crash.log
+crash.*.log

@@ -1,0 +1,10 @@
+pnpm-lock.yaml
+**/packages.lock.json
+**/bin/
+**/obj/
+**/dist/
+**/wwwroot/
+artifacts/
+.terraform/
+.husky/_/
+intent/**/source/

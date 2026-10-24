@@ -1,0 +1,29 @@
+# Weekly updates; minor and patch versions are grouped into one PR per ecosystem.
+# The cooldown waits for new releases to settle, matching pnpm's minimumReleaseAge policy.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule: { interval: weekly }
+    cooldown: { default-days: 3 }
+    groups:
+      npm-minor-patch: { update-types: [minor, patch] }
+  - package-ecosystem: nuget
+    directory: /api
+    schedule: { interval: weekly }
+    cooldown: { default-days: 3 }
+    groups:
+      nuget-minor-patch: { update-types: [minor, patch] }
+  - package-ecosystem: dotnet-sdk
+    directory: /
+    schedule: { interval: weekly }
+  - package-ecosystem: terraform
+    directory: /infrastructure
+    schedule: { interval: weekly }
+    groups:
+      terraform-minor-patch: { update-types: [minor, patch] }
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      actions-minor-patch: { update-types: [minor, patch] }

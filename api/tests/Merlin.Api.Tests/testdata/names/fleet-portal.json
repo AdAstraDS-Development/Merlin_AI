@@ -1,0 +1,61 @@
+{
+  "$comment": "Engine output of factory/New-AppProject.ps1 -Mode DryRun -ValidateOnly for samples/request.example.json, ai-sw-template commit 51d580a. Regenerate when the engine naming rules change.",
+  "request": {
+    "appName": "FleetPortal",
+    "appSlug": "fleet-portal",
+    "author": "Alex Example",
+    "description": "## Today\n\nDispatchers plan vehicle assignments in a shared spreadsheet.\n\n- Double bookings are found too late\n- Fleet managers have no weekly utilisation view\n",
+    "problem": "Dispatchers track vehicle assignments in spreadsheets, so double bookings are found too late.",
+    "outcome": "Dispatchers see one live assignment board and conflicts are prevented at booking time.",
+    "users": ["Dispatchers", "Fleet managers", "Maintenance planning system"],
+    "useCases": [
+      "Dispatcher assigns a vehicle to a trip",
+      "Fleet manager reviews utilisation per week"
+    ],
+    "constraints": [
+      "No personal data leaves the EU",
+      "Sign-in with company accounts"
+    ],
+    "documentLinks": [
+      "https://example.sharepoint.com/sites/fleet/Shared%20Documents/current-process.docx"
+    ],
+    "billing": {
+      "costCenter": "CC-4711",
+      "tier": "standard"
+    },
+    "azure": {
+      "tenantId": "00000000-0000-0000-0000-000000000000",
+      "subscriptionId": "00000000-0000-0000-0000-000000000000",
+      "region": "westeurope",
+      "nameSuffix": "smpl01",
+      "environments": ["development", "production"]
+    },
+    "github": {
+      "owner": "acme-factory",
+      "repoName": "fleet-portal",
+      "visibility": "private",
+      "productionReviewers": ["octocat"]
+    },
+    "options": {
+      "protectMain": true,
+      "runLocalValidation": false,
+      "database": "azure-sql"
+    }
+  },
+  "names": {
+    "sharedResourceGroup": "rg-fleet-portal-shared-smpl01",
+    "environmentResourceGroups": [
+      "rg-fleet-portal-dev-smpl01",
+      "rg-fleet-portal-prd-smpl01"
+    ],
+    "webApps": ["app-fleet-portal-dev-smpl01", "app-fleet-portal-prd-smpl01"],
+    "stateResourceGroup": "rg-fleet-portal-shared-smpl01",
+    "stateStorageAccount": "stfleetportalsmpl01tf",
+    "stateContainer": "tfstate",
+    "identities": [
+      "id-fleet-portal-plan",
+      "id-fleet-portal-infra",
+      "id-fleet-portal-deploy"
+    ]
+  }
+}

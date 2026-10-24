@@ -1,0 +1,92 @@
+name: Frontend Build & Deploy (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: GitHub environment holding the deployment secrets and VITE_* variables
+        required: true
+        type: string
+      ref:
+        description: Git ref to build (defaults to the triggering commit)
+        required: false
+        type: string
+        default: ''
+      version:
+        description: Release version (e.g. v1.2.0); defaults to dev-<short-sha>
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  build_and_deploy:
+    name: Build & Deploy (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    concurrency:
+      group: deploy-frontend-${{ inputs.environment }}
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Resolve version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          echo "version=${INPUT_VERSION:-dev-$SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Validate environment configuration
+        env:
+          VITE_ENTRA_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+          VITE_ENTRA_CLIENT_ID: ${{ secrets.VITE_ENTRA_CLIENT_ID }}
+        run: |
+          for name in VITE_ENTRA_TENANT_ID VITE_ENTRA_CLIENT_ID; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Variable $name is not set in environment '${{ inputs.environment }}'."
+              exit 1
+            fi
+          done
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+
+      # pnpm/action-setup is not available on this instance; the version comes from packageManager in package.json
+      - name: Install pnpm
+        run: npm install -g "$(node -p "require('./package.json').packageManager")"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build and prepare deploy
+        run: |
+          pnpm --dir web build
+          cp staticwebapp.config.json web/dist/
+        env:
+          VITE_AUTH_ENABLED: 'true'
+          VITE_ENTRA_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+          # VITE_ENTRA_CLIENT_ID: ${{ secrets.VITE_ENTRA_CLIENT_ID }}
+
+      - name: Deploy to Azure Static Web App
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          action: 'upload'
+          app_location: 'web/dist'
+          skip_app_build: true
+
+      - name: Deployment summary
+        run: |
+          echo "### ✅ Frontend deployed to ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Version**: ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit**: ${{ steps.version.outputs.short_sha }}" >> $GITHUB_STEP_SUMMARY
